@@ -1,0 +1,30 @@
+#默认奖励提示
+defaultMessage: '&2你收到了在线奖励'
+#是否默认保管，此项开启后不会自动发放到玩家背包，需要玩家手动领取
+defaultKeep: false
+
+#间隔奖励
+timerRewards:
+  test_wool:
+    #间隔时间，单位秒
+    interval: 2
+    #物品id
+    id: 35
+    damage: 11
+    #自定义显示物品名
+    name: '&6[ &e&l羊毛&6]'
+    #自定义物品信息
+    lores:
+    - '&1Lore1'
+    - '&2Lore2'
+    #数量
+    amount: 1
+    #拥有此权限的玩家才能收到奖励，可自行设定权限节点
+    permission: timerRewards.rewards.wool
+    #奖励提示
+    message: '&3你收到了羊毛'
+  test_stone1:
+    interval: 1
+    id: 4
+    damage: 0
+    amount: 1

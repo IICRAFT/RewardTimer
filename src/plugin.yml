@@ -1,0 +1,17 @@
+name: RewardTimer
+main: com.willzcode.RewardTimer
+version: 1.2.0
+
+commands:
+  rewardtimer:
+    usage: '/rt'
+    description: 'desc'
+    permission: 'rewardtimer.use'
+    permisson-message: '你没有权限这么做'
+    aliases: [rt]
+
+permissions:
+  rewardtimer.use:
+    default: true
+  rewardtimer.reload:
+    default: op
