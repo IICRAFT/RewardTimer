@@ -1,13 +1,13 @@
 package com.willzcode;
 
-import com.sun.org.apache.regexp.internal.RE;
-import javafx.util.Pair;
-import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -16,11 +16,12 @@ import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.*;
 
-public class RewardTimer extends JavaPlugin {
-    boolean isDefaultKeep;
-    String defaultMessage;
-    List<Reward> rewards = new ArrayList<>();
-    Map<UUID, PlayerKeep> playerKeep= new HashMap<>();
+@SuppressWarnings("deprecation")
+public class RewardTimer extends JavaPlugin implements Listener {
+    private boolean isDefaultKeep;
+    private String defaultMessage;
+    private List<Reward> rewards = new ArrayList<>();
+    private Map<UUID, PlayerKeep> playerKeep = new HashMap<>();
 
     @Override
     public void onEnable() {
@@ -31,13 +32,25 @@ public class RewardTimer extends JavaPlugin {
                 for (Reward r : rewards) {
                     if (r.counting >= r.interval) {
                         r.counting = 0;
-                        sendItem(r, r.message != null ? r.message : defaultMessage, r.permission);
+                        sendReward(r, r.message != null ? r.message : defaultMessage, r.permission);
                     }
                     r.counting++;
                 }
 
             }
         }.runTaskTimer(this, 0L, 20L);
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        sendKeep(event.getPlayer());
+    }
+
+    @Override
+    public void onDisable() {
+        for (Player player : getServer().getOnlinePlayers()) {
+            sendKeep(player);
+        }
     }
 
     @Override
@@ -48,65 +61,7 @@ public class RewardTimer extends JavaPlugin {
             switch (args[0]) {
                 case "claim":
                     if (sender instanceof Player) {
-                        Player player = (Player)sender;
-                        Inventory pi = player.getInventory();
-                        PlayerKeep keep = playerKeep.get(player.getUniqueId());
-                        int total = 0;
-                        boolean isFull = false;
-                        if(keep != null)
-                            for (Reward reward : rewards) {
-                                ItemStack item = reward.item;
-                                keep.keepMap.putIfAbsent(reward.key, 0);
-                                int count = keep.keepMap.get(reward.key);
-                                int stackSize = item.getMaxStackSize();
-                                for(int i = 0; i < pi.getSize() && count > 0; i++) {
-                                    int added = 0;
-                                    ItemStack current = pi.getItem(i);
-                                    ItemStack temp = item;
-                                    if (current == null) {
-                                        if (count > stackSize) {
-                                            added = stackSize;
-                                            count -= stackSize;
-                                        } else {
-                                            added = count;
-                                            count = 0;
-                                        }
-                                        total += added;
-                                        temp.setAmount(added);
-                                        pi.setItem(i, temp);
-                                        continue;
-                                    }
-                                    if (current.isSimilar(item) && current.getAmount() < stackSize) {
-                                        if (count > stackSize - current.getAmount()) {
-                                            added = stackSize - current.getAmount();
-                                            count -= stackSize - current.getAmount();
-                                        } else {
-                                            added = count;
-                                            count = 0;
-                                        }
-                                        total += added;
-                                        temp.setAmount(current.getAmount() + added);
-                                        pi.setItem(i, temp);
-
-                                    }
-
-                                }
-                                keep.keepMap.replace(reward.key, count);
-                                playerKeep.replace(player.getUniqueId(), keep);
-                                if (count > 0) {
-                                    player.sendMessage("§3你的背包满了，请留出足够的空间再来领取");
-                                    isFull = true;
-                                    break;
-                                }
-                            }
-
-                        if (!isFull)
-                            if (total > 0) {
-                                player.sendMessage("§2奖励已发送到你的背包");
-                            } else {
-                                player.sendMessage("§4暂时没有奖励，再等一会试试");
-                            }
-
+                        sendKeep((Player) sender);
                     }
 
                     break;
@@ -127,7 +82,7 @@ public class RewardTimer extends JavaPlugin {
         loadConfig();
     }
 
-    void loadConfig() {
+    private void loadConfig() {
         rewards.clear();
         playerKeep.clear();
 
@@ -174,17 +129,12 @@ public class RewardTimer extends JavaPlugin {
         }
     }
 
-    private void sendItem(Reward reward, String message, String permission) {
-        Player[] players = getServer().getOnlinePlayers();
-        for(int i = 0 ;i < players.length; i++) {
-            if (permission == null || players[i].hasPermission(permission)) {
+    private void sendReward(Reward reward, String message, String permission) {
+        for (Player player : getServer().getOnlinePlayers()) {
+            if (permission == null || player.hasPermission(permission)) {
                 if (isDefaultKeep) {
-                    UUID uid = players[i].getUniqueId();
-                    PlayerKeep keep = playerKeep.get(uid);
-                    if (keep == null) {
-                        keep = new PlayerKeep(uid, true);
-                        playerKeep.put(uid, keep);
-                    }
+                    UUID uid = player.getUniqueId();
+                    PlayerKeep keep = playerKeep.computeIfAbsent(uid, k -> new PlayerKeep(uid, true));
 
                     keep.keepMap.putIfAbsent(reward.key, 0);
                     int count = keep.keepMap.get(reward.key);
@@ -192,12 +142,70 @@ public class RewardTimer extends JavaPlugin {
                     keep.keepMap.replace(reward.key, count);
                     playerKeep.replace(uid, keep);
                 } else {
-                    players[i].getInventory().addItem(reward.item);
-                    if(message != null || message.equals(""))
-                        players[i].sendMessage(message);
+                    player.getInventory().addItem(reward.item);
+                    if(message != null)
+                        player.sendMessage(message);
                 }
             }
         }
+    }
 
+    private void sendKeep(Player player) {
+        Inventory pi = player.getInventory();
+        PlayerKeep keep = playerKeep.get(player.getUniqueId());
+        int total = 0;
+        boolean isFull = false;
+        if(keep != null)
+            for (Reward reward : rewards) {
+                ItemStack item = reward.item;
+                keep.keepMap.putIfAbsent(reward.key, 0);
+                int count = keep.keepMap.get(reward.key);
+                int stackSize = item.getMaxStackSize();
+                for(int i = 0; i < pi.getSize() && count > 0; i++) {
+                    int added;
+                    ItemStack current = pi.getItem(i);
+                    ItemStack temp = new ItemStack(item);
+                    if (current == null) {
+                        if (count > stackSize) {
+                            added = stackSize;
+                            count -= stackSize;
+                        } else {
+                            added = count;
+                            count = 0;
+                        }
+                        total += added;
+                        temp.setAmount(added);
+                        pi.setItem(i, temp);
+                        continue;
+                    }
+                    if (current.isSimilar(item) && current.getAmount() < stackSize) {
+                        if (count > stackSize - current.getAmount()) {
+                            added = stackSize - current.getAmount();
+                            count -= stackSize - current.getAmount();
+                        } else {
+                            added = count;
+                            count = 0;
+                        }
+                        total += added;
+                        temp.setAmount(current.getAmount() + added);
+                        pi.setItem(i, temp);
+                    }
+
+                }
+                keep.keepMap.replace(reward.key, count);
+                playerKeep.replace(player.getUniqueId(), keep);
+                if (count > 0) {
+                    player.sendMessage("§3你的背包满了，请留出足够的空间再来领取");
+                    isFull = true;
+                    break;
+                }
+            }
+
+        if (!isFull)
+            if (total > 0) {
+                player.sendMessage("§2奖励已发送到你的背包");
+            } else {
+                player.sendMessage("§4暂时没有奖励，再等一会试试");
+            }
     }
 }
